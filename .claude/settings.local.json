@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(node_modules/.bin/vite build *)",
+      "Bash(npx vite *)",
+      "Bash(npm install *)",
+      "Bash(node -e \"const pkg = require\\('./apps/web/package.json'\\); console.log\\(JSON.stringify\\(pkg.dependencies, null, 2\\)\\)\")"
+    ]
+  }
+}

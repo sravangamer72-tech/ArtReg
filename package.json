@@ -1,0 +1,29 @@
+{
+  "name": "art-workshop-platform",
+  "version": "1.0.0",
+  "description": "Premium Art Workshop Registration Platform with Razorpay & QR codes",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev:web",
+    "dev:web": "npm -w apps/web run dev",
+    "dev:admin": "npm -w apps/admin run dev",
+    "build": "npm run build:web && npm run build:admin",
+    "build:web": "npm -w apps/web run build",
+    "build:admin": "npm -w apps/admin run build",
+    "preview:web": "npm -w apps/web run preview",
+    "preview:admin": "npm -w apps/admin run preview",
+    "type-check": "npm -w apps/web run type-check && npm -w apps/admin run type-check && npm -w packages/shared run type-check"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.2",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
