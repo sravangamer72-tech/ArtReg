@@ -2,22 +2,9 @@
  * Generate a unique pass ID (format: ART-XXXXXX-XXXX)
  */
 export function generatePassId(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let result = 'ART-';
-  
-  // First segment: 6 characters
-  for (let i = 0; i < 6; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  
-  result += '-';
-  
-  // Second segment: 4 characters
-  for (let i = 0; i < 4; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  
-  return result;
+  const year = new Date().getFullYear()
+  const num = String(Math.floor(Math.random() * 900) + 100).padStart(3, '0')
+  return `RSA-${year}-${num}`
 }
 
 /**

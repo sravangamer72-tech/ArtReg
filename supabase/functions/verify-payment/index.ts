@@ -1,147 +1,105 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.0";
 import { corsHeaders } from "../_shared/cors.ts";
 
-interface VerifyPaymentPayload {
-  razorpay_payment_id: string;
-  razorpay_order_id: string;
-  razorpay_signature: string;
-  registration_id: string;
-}
-
-// Helper to generate HMAC-SHA256
-async function generateSignature(
-  data: string,
-  secret: string
-): Promise<string> {
-  const encoder = new TextEncoder();
-  const keyData = encoder.encode(secret);
-  const messageData = encoder.encode(data);
-
-  const key = await crypto.subtle.importKey(
-    "raw",
-    keyData,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-
-  const signature = await crypto.subtle.sign("HMAC", key, messageData);
-  return Array.from(new Uint8Array(signature))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
 Deno.serve(async (req) => {
-  // Handle CORS
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    const payload: VerifyPaymentPayload = await req.json();
+    const { text, registrationId } = await req.json();
 
-    // Validate required fields
-    if (
-      !payload.razorpay_payment_id ||
-      !payload.razorpay_order_id ||
-      !payload.razorpay_signature ||
-      !payload.registration_id
-    ) {
-      return new Response(
-        JSON.stringify({ error: "Missing required fields" }),
-        { status: 400, headers: corsHeaders }
-      );
+    if (!text || !registrationId) {
+      return fail("Missing screenshot text or registration ID");
     }
 
-    // Get Razorpay key secret from env
-    const razorpayKeySecret = Deno.env.get("RAZORPAY_KEY_SECRET");
-
-    if (!razorpayKeySecret) {
-      return new Response(
-        JSON.stringify({ error: "Razorpay secret not configured" }),
-        { status: 500, headers: corsHeaders }
-      );
-    }
-
-    // Verify HMAC signature
-    const message = `${payload.razorpay_order_id}|${payload.razorpay_payment_id}`;
-    const expectedSignature = await generateSignature(
-      message,
-      razorpayKeySecret
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    if (expectedSignature !== payload.razorpay_signature) {
-      console.error("Signature verification failed");
-      return new Response(
-        JSON.stringify({ error: "Payment signature verification failed" }),
-        { status: 400, headers: corsHeaders }
-      );
-    }
-
-    // Update registration in database
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") || "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
-    );
-
-    const { data: registration, error: fetchError } = await supabaseClient
+    // Fetch registration → workshop_id
+    const { data: registration, error: regError } = await supabase
       .from("registrations")
-      .select("*")
-      .eq("id", payload.registration_id)
+      .select("workshop_id")
+      .eq("id", registrationId)
       .single();
 
-    if (fetchError || !registration) {
-      console.error("Registration not found:", fetchError);
-      return new Response(
-        JSON.stringify({ error: "Registration not found" }),
-        { status: 404, headers: corsHeaders }
-      );
-    }
+    if (regError || !registration) return fail("Registration not found");
 
-    // Update registration to paid
-    const { error: updateError } = await supabaseClient
-      .from("registrations")
-      .update({
-        payment_status: "paid",
-        payment_id: payload.razorpay_payment_id,
-        razorpay_order_id: payload.razorpay_order_id,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", payload.registration_id);
-
-    if (updateError) {
-      console.error("Failed to update registration:", updateError);
-      return new Response(
-        JSON.stringify({ error: "Failed to update payment status" }),
-        { status: 500, headers: corsHeaders }
-      );
-    }
-
-    // Increment workshop enrolled count
-    const { error: workshopError } = await supabaseClient
+    // Fetch workshop price
+    const { data: workshop, error: wsError } = await supabase
       .from("workshops")
-      .update({ enrolled: registration.workshop_id ? (registration.enrolled || 0) + 1 : 0 })
-      .eq("id", registration.workshop_id);
+      .select("price")
+      .eq("id", registration.workshop_id)
+      .single();
 
-    if (workshopError) {
-      console.warn("Failed to update workshop enrolled count:", workshopError);
-      // Don't fail the payment verification if this fails
+    if (wsError || !workshop) return fail("Workshop not found");
+
+    const expectedAmount = workshop.price;
+
+    // ── Check 1: Amount ──
+    // Extract every number from OCR text and see if any equals the workshop price
+    const allNumbers = (text.match(/\d+/g) ?? []).map(Number);
+    if (!allNumbers.includes(expectedAmount)) {
+      return fail(`Amount ₹${expectedAmount} not found in the screenshot`);
     }
 
-    // Return success response with pass details
+    // ── Check 2: Success status ──
+    if (!/transaction\s*successful|success|paid|debited/i.test(text)) {
+      return fail('Payment success not confirmed — screenshot must show "Transaction Successful", "Success", "Paid", or "Debited"');
+    }
+
+    // ── Check 3: 12-digit UTR ──
+    // First try after "UTR:" label, then fallback to any 12-digit number
+    const utrLabelled = text.match(/UTR[:\s#]+(\d{12})/i);
+    const utrFallback = text.match(/(?<!\d)(\d{12})(?!\d)/);
+    const utr = (utrLabelled?.[1] ?? utrFallback?.[1]) ?? null;
+
+    if (!utr) {
+      return fail("12-digit UTR number not found in the screenshot");
+    }
+
+    // ── Check 4: Duplicate UTR ──
+    const { data: existing } = await supabase
+      .from("registrations")
+      .select("id")
+      .eq("utr", utr)
+      .maybeSingle();
+
+    if (existing) {
+      return fail("This payment has already been used for another registration");
+    }
+
+    // ── All passed — save UTR + mark paid ──
+    const { error: updateError } = await supabase
+      .from("registrations")
+      .update({ payment_status: "paid", utr })
+      .eq("id", registrationId);
+
+    if (updateError) throw updateError;
+
+    return ok({ verified: true, utr });
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
     return new Response(
-      JSON.stringify({
-        success: true,
-        pass_id: registration.pass_id,
-        message: "Payment verified successfully",
-      }),
-      { status: 200, headers: corsHeaders }
-    );
-  } catch (error) {
-    console.error("Error:", error);
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
-      { status: 500, headers: corsHeaders }
+      JSON.stringify({ verified: false, reason: `Server error: ${message}` }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
+
+function fail(reason: string) {
+  return new Response(
+    JSON.stringify({ verified: false, reason }),
+    { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
+
+function ok(data: object) {
+  return new Response(
+    JSON.stringify(data),
+    { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
