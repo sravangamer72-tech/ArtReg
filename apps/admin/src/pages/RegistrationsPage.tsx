@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { Search, Download, RefreshCw } from 'lucide-react'
+import { Search, Download, RefreshCw, Trash2 } from 'lucide-react'
 import { supabase, type Registration } from '@art-workshop/shared'
 import toast from 'react-hot-toast'
 
@@ -13,6 +13,8 @@ export default function RegistrationsPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [page, setPage] = useState(1)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => { fetchData() }, [])
 
@@ -68,8 +70,62 @@ export default function RegistrationsPage() {
     toast.success('CSV downloaded')
   }
 
+  const handleDelete = async () => {
+    if (!deleteId) return
+    setDeleting(true)
+    const { error } = await supabase
+      .from('registrations')
+      .delete()
+      .eq('id', deleteId)
+    if (error) {
+      toast.error('Failed to delete registration')
+    } else {
+      setRegistrations((prev) => prev.filter((r) => r.id !== deleteId))
+      toast.success('Registration deleted successfully')
+    }
+    setDeleting(false)
+    setDeleteId(null)
+  }
+
   return (
     <div className="space-y-6 pb-8">
+      {/* Delete Confirmation Modal */}
+      {deleteId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4"
+          >
+            <div className="flex items-center justify-center w-12 h-12 bg-red-100 rounded-full mx-auto mb-4">
+              <Trash2 size={20} className="text-red-600" />
+            </div>
+            <h3 className="font-display text-lg font-bold text-navy text-center mb-1">
+              Delete Registration?
+            </h3>
+            <p className="font-body text-sm text-navy/50 text-center mb-6">
+              This action cannot be undone. The registration will be permanently removed.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteId(null)}
+                disabled={deleting}
+                className="flex-1 px-4 py-2.5 rounded-lg text-sm font-body text-navy border border-gray-200 hover:border-ocean transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 px-4 py-2.5 rounded-lg text-sm font-body text-white bg-red-500 hover:bg-red-600 transition-colors disabled:opacity-60"
+              >
+                {deleting ? 'Deleting…' : 'Yes, Delete'}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h2 className="font-display text-2xl font-bold text-navy">Registrations</h2>
@@ -142,9 +198,9 @@ export default function RegistrationsPage() {
               <table className="w-full text-sm">
                 <thead className="bg-background border-b border-gray-100">
                   <tr>
-                    {['Name', 'Workshop', 'Email', 'Phone', 'Payment', 'Status', 'Registered'].map((h) => (
+                    {['Name', 'Workshop', 'Email', 'Phone', 'Payment', 'Status', 'Registered', ''].map((h, i) => (
                       <th
-                        key={h}
+                        key={i}
                         className="px-5 py-3.5 text-left font-body text-xs font-semibold text-navy/40 uppercase tracking-wider"
                       >
                         {h}
@@ -177,6 +233,15 @@ export default function RegistrationsPage() {
                         {new Date(reg.created_at).toLocaleDateString('en-IN', {
                           day: 'numeric', month: 'short', year: 'numeric',
                         })}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <button
+                          onClick={() => setDeleteId(reg.id)}
+                          className="p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          title="Delete registration"
+                        >
+                          <Trash2 size={15} />
+                        </button>
                       </td>
                     </tr>
                   ))}
