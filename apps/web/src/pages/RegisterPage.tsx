@@ -217,19 +217,15 @@ function Step1Form({
           </p>
           <div className="space-y-2">
             {workshops.map((w) => {
-              const spotsLeft = w.capacity - w.enrolled
               const selected = activeWorkshop?.id === w.id
               return (
                 <button
                   key={w.id}
                   type="button"
                   onClick={() => onSelectWorkshop(w)}
-                  disabled={spotsLeft === 0}
                   className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border text-left transition-all ${
                     selected
                       ? 'border-ocean bg-light ring-2 ring-ocean/20'
-                      : spotsLeft === 0
-                      ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
                       : 'border-gray-200 bg-white hover:border-accent/50 hover:bg-light/50'
                   }`}
                 >
@@ -244,16 +240,7 @@ function Step1Form({
                     <p className="font-body text-sm font-semibold text-navy truncate">{w.name}</p>
                     <p className="font-body text-xs text-navy/45">{w.date} · {w.venue}</p>
                   </div>
-                  <div className="text-right shrink-0">
-                    <p className="font-body text-sm font-bold text-ocean">₹{w.price.toLocaleString('en-IN')}</p>
-                    {spotsLeft === 0 ? (
-                      <p className="font-body text-[10px] text-red-400">Full</p>
-                    ) : spotsLeft <= 4 ? (
-                      <p className="font-body text-[10px] text-amber-500">{spotsLeft} left</p>
-                    ) : (
-                      <p className="font-body text-[10px] text-navy/30">{spotsLeft} seats</p>
-                    )}
-                  </div>
+                  <p className="font-body text-sm font-bold text-ocean shrink-0">₹{w.price.toLocaleString('en-IN')}</p>
                 </button>
               )
             })}
