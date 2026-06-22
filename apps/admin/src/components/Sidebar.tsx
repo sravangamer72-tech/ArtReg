@@ -4,7 +4,6 @@ import {
   LayoutDashboard,
   Users,
   BookOpen,
-  CreditCard,
   ScanLine,
   X,
 } from 'lucide-react'
@@ -18,8 +17,7 @@ const navItems = [
   { path: '/dashboard',     label: 'Dashboard',     icon: LayoutDashboard },
   { path: '/registrations', label: 'Registrations', icon: Users },
   { path: '/workshops',     label: 'Workshops',     icon: BookOpen },
-  { path: '/payments',      label: 'Payments',      icon: CreditCard },
-  { path: '/checkin',       label: 'Check-ins',     icon: ScanLine },
+  { path: '/check-in',      label: 'Check-ins',     icon: ScanLine },
 ]
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {

@@ -8,7 +8,7 @@ import {
 import { supabase, formatCurrency, type Registration } from '@art-workshop/shared'
 import toast from 'react-hot-toast'
 
-const PASS_PATTERN = /^ART-[A-Z0-9]{6}-[A-Z0-9]{4}$/
+const PASS_PATTERN = /^RSA-\d{4}-\d{3}$/
 const SCANNER_DIV = 'html5-qr-region'
 
 function playBeep() {

@@ -8,8 +8,7 @@ const pageTitles: Record<string, { title: string; subtitle: string }> = {
   '/dashboard':     { title: 'Dashboard',     subtitle: 'Overview of registrations and revenue' },
   '/registrations': { title: 'Registrations', subtitle: 'Manage all workshop registrations' },
   '/workshops':     { title: 'Workshops',     subtitle: 'Manage your workshop listings' },
-  '/payments':      { title: 'Payments',      subtitle: 'Track payment statuses' },
-  '/checkin':       { title: 'Check-in',      subtitle: 'Scan QR codes or search by pass ID' },
+  '/check-in':      { title: 'Check-in',      subtitle: 'Scan QR codes or search by pass ID' },
 }
 
 export default function AdminLayout() {

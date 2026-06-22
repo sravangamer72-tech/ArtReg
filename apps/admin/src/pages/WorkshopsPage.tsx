@@ -19,7 +19,7 @@ interface WorkshopForm {
 
 const EMPTY_FORM: WorkshopForm = {
   name: '', description: '', instructor: '', date: '', time: '',
-  venue: '', price: '', capacity: '', image_url: '', is_active: true,
+  venue: '', price: '', capacity: '999', image_url: '', is_active: true,
 }
 
 export default function WorkshopsPage() {
@@ -73,7 +73,7 @@ export default function WorkshopsPage() {
   }
 
   const handleSave = async () => {
-    if (!form.name.trim() || !form.date || !form.time || !form.venue || !form.price || !form.capacity) {
+    if (!form.name.trim() || !form.date || !form.time || !form.venue || !form.price) {
       toast.error('Please fill in all required fields.')
       return
     }
@@ -216,7 +216,6 @@ export default function WorkshopsPage() {
                     <span>{w.date} · {w.time}</span>
                     <span>{w.venue}</span>
                     <span className="font-semibold text-ocean">₹{w.price.toLocaleString('en-IN')}</span>
-                    <span>{w.enrolled} / {w.capacity} seats</span>
                   </div>
                   {w.description && (
                     <p className="mt-2 text-xs font-body text-navy/40 line-clamp-1">{w.description}</p>
@@ -352,28 +351,16 @@ export default function WorkshopsPage() {
                     />
                   </Field>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <Field label="Price (₹) *">
-                      <input
-                        type="number"
-                        value={form.price}
-                        onChange={set('price')}
-                        placeholder="1500"
-                        min="0"
-                        className={inputCls}
-                      />
-                    </Field>
-                    <Field label="Capacity *">
-                      <input
-                        type="number"
-                        value={form.capacity}
-                        onChange={set('capacity')}
-                        placeholder="12"
-                        min="1"
-                        className={inputCls}
-                      />
-                    </Field>
-                  </div>
+                  <Field label="Price (₹) *">
+                    <input
+                      type="number"
+                      value={form.price}
+                      onChange={set('price')}
+                      placeholder="1500"
+                      min="0"
+                      className={inputCls}
+                    />
+                  </Field>
 
                   <Field label="Workshop Image">
                     <ImageUpload

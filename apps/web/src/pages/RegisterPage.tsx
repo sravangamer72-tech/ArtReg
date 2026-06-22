@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react'
-import Tesseract from 'tesseract.js'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -323,7 +322,7 @@ function Step1Form({
   )
 }
 
-/* ─── Step 2: Screenshot Upload + AI Verification ─── */
+/* ─── Step 2: Payment + Screenshot Upload ─── */
 function Step2Payment({
   registration,
   onPaid,
@@ -351,74 +350,29 @@ function Step2Payment({
     setVerifying(true)
 
     try {
-      // Step 1 — OCR in browser (free, no external API)
-      setVerifyStep('Reading screenshot… (may take 10–15 seconds)')
-      const { data: { text } } = await Tesseract.recognize(file, 'eng', { logger: () => {} })
-
-      setVerifyStep('Verifying payment…')
-
-      // Debug: log OCR output so we can see what Tesseract extracted
-      console.log('[OCR text]', text)
-
-      // ── Check 1: Amount ──
-      const amt = registration.amount
-      const amtStr = String(amt)
-
-      // Strip non-digit/space chars so ₹ merging into digits (e.g. "₹2" → "32") doesn't fool us
-      const rawText = text.replace(/[^\d\s]/g, ' ')
-      const allNumbers = (rawText.match(/\b\d+\b/g) ?? [] as string[]).map(Number)
-
-      // Also pull numbers that appear right after a ₹/Rs symbol in the original OCR text
-      const rupeeMatch = text.match(/[₹Rs.]+\s*(\d+)/gi) ?? []
-      const rupeeAmounts = rupeeMatch.map(m => Number(m.replace(/[^\d]/g, '')))
-
-      const amountFound =
-        allNumbers.includes(amt) ||          // clean number list
-        rupeeAmounts.includes(amt) ||        // after ₹ symbol
-        text.includes(amtStr)               // raw substring fallback
-
-      if (!amountFound) {
-        setError(`Amount ₹${amt} not found in the screenshot. Make sure the payment amount is visible.`)
+      const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+      if (!validTypes.includes(file.type)) {
+        setError('Please upload a valid image file (JPG, PNG, or WebP).')
         return
       }
 
-      // ── Check 2: Success status ──
-      if (!/transaction\s*successful|success|paid|debited/i.test(text)) {
-        setError('Payment success not confirmed. Screenshot must show "Transaction Successful", "Success", "Paid", or "Debited".')
+      if (file.size > 5 * 1024 * 1024) {
+        setError('File size must be under 5MB. Please upload a smaller screenshot.')
         return
       }
 
-      // ── Check 3: 12-digit UTR (must appear after a UTR label) ──
-      // Accepted labels: "UTR:", "UTR No:", "UTR Ref:", "Ref No:" etc.
-      const utrMatch = text.match(/(?:UTR|Ref\s*(?:No|ID)?)\s*[:#\-]?\s*(\d{12})/i)
-      const utr = utrMatch?.[1] ?? null
-      if (!utr) {
-        setError('12-digit UTR number not found. Make sure the full transaction details are visible in the screenshot.')
-        return
-      }
+      setVerifyStep('Uploading screenshot…')
 
-      // ── Check 4: Duplicate UTR ──
-      const { data: existing } = await supabase
-        .from('registrations')
-        .select('id')
-        .eq('utr', utr)
-        .maybeSingle()
-      if (existing) {
-        setError('This payment has already been used for another registration.')
-        return
-      }
-
-      // ── All passed — mark paid + save UTR ──
       const { error: updateError } = await supabase
         .from('registrations')
-        .update({ payment_status: 'paid', utr })
+        .update({ payment_status: 'paid' })
         .eq('id', registration.id)
       if (updateError) throw updateError
 
       onPaid()
 
     } catch (err: any) {
-      setError(err?.message ?? 'Verification failed. Please try again.')
+      setError(err?.message ?? 'Upload failed. Please try again.')
     } finally {
       setVerifying(false)
       setVerifyStep('')
