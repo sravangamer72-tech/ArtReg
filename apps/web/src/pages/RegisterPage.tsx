@@ -106,12 +106,25 @@ export default function RegisterPage() {
     }
   })
 
-  /* ── Step 2: payment verified by edge function, just navigate ── */
-  const handleUpiPaid = () => {
+  /* ── Step 1 → Step 2 (seat selection). If user re-submits after going back, delete the old pending registration first ── */
+  const onStep1SubmitWrapped: typeof onStep1Submit = async (e) => {
+    if (registration?.id) {
+      await supabase.from('registrations').delete().eq('id', registration.id).eq('payment_status', 'pending')
+      setRegistration(null)
+    }
+    return onStep1Submit(e)
+  }
+
+  /* ── Step 2 seat confirmed → Step 3 payment ── */
+  const handleSeatConfirmed = (newAmount: number) => {
+    setRegistration(prev => prev ? { ...prev, amount: newAmount } : prev)
     setStep(3)
   }
 
-  if (step === 3 && registration) {
+  /* ── Step 3 payment done → Step 4 confirmation ── */
+  const handleUpiPaid = () => setStep(4)
+
+  if (step === 4 && registration) {
     return (
       <div className="min-h-screen font-body">
         <Navbar />
@@ -128,7 +141,7 @@ export default function RegisterPage() {
       <div className="pt-16">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 py-12">
           <div className="mb-10">
-            <ProgressSteps current={step} />
+            <ProgressSteps current={step} steps={['Your Details', 'Pick a Ticket', 'Payment']} />
           </div>
           <div className="bg-white rounded-2xl shadow-card p-8 md:p-10">
             <AnimatePresence mode="wait">
@@ -143,7 +156,7 @@ export default function RegisterPage() {
                   <Step1Form
                     register={register}
                     errors={errors}
-                    onSubmit={onStep1Submit}
+                    onSubmit={onStep1SubmitWrapped}
                     submitting={submitting}
                     workshops={workshops}
                     activeWorkshop={activeWorkshop}
@@ -159,11 +172,27 @@ export default function RegisterPage() {
                   exit={{ opacity: 0, x: -30 }}
                   transition={{ duration: 0.22 }}
                 >
+                  <Step2SeatSelection
+                    workshop={activeWorkshop}
+                    registrationId={registration.id}
+                    onConfirm={handleSeatConfirmed}
+                    onBack={() => setStep(1)}
+                  />
+                </motion.div>
+              )}
+              {step === 3 && registration && activeWorkshop && (
+                <motion.div
+                  key="s3"
+                  initial={{ opacity: 0, x: 30 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -30 }}
+                  transition={{ duration: 0.22 }}
+                >
                   <Step2Payment
                     registration={registration}
                     onPaid={handleUpiPaid}
                     submitting={submitting}
-                    onBack={() => setStep(1)}
+                    onBack={() => setStep(2)}
                   />
                 </motion.div>
               )}
@@ -302,9 +331,183 @@ function Step1Form({
         disabled={submitting || !activeWorkshop}
         className="mt-8 w-full bg-[#0D2B45] text-white py-3.5 rounded-xl font-body font-semibold hover:bg-[#16537E] transition-colors text-sm disabled:opacity-60"
       >
-        {submitting ? 'Saving…' : 'Continue to Payment →'}
+        {submitting ? 'Saving…' : 'Continue to Ticket Selection →'}
       </button>
 
+    </div>
+  )
+}
+
+/* ─── Step 2: Seat Quantity Selection ─── */
+function Step2SeatSelection({
+  workshop,
+  registrationId,
+  onConfirm,
+  onBack,
+}: {
+  workshop: Workshop
+  registrationId: string
+  onConfirm: (newAmount: number) => void
+  onBack: () => void
+}) {
+  const [quantity, setQuantity] = useState<number | null>(null)
+  const [manualInput, setManualInput] = useState('')
+  const [manualError, setManualError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [inputFocused, setInputFocused] = useState(false)
+
+  const total = quantity != null ? quantity * workshop.price : 0
+
+  const handleBoxClick = (qty: number) => {
+    setQuantity(prev => (prev === qty && !manualInput ? null : qty))
+    setManualInput('')
+    setManualError('')
+    setError('')
+  }
+
+  const handleManualChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value
+    setManualInput(val)
+    setManualError('')
+    setQuantity(null)
+    setError('')
+    if (!val) return
+    const num = parseInt(val, 10)
+    if (!Number.isInteger(num) || num < 1) {
+      setManualError('Enter a valid number of tickets')
+    } else {
+      setQuantity(num)
+    }
+  }
+
+  const handleConfirm = async () => {
+    if (!quantity) { setError('Please select the number of tickets.'); return }
+    setSaving(true)
+    try {
+      const totalAmount = quantity * workshop.price
+      const { error: updateError } = await supabase
+        .from('registrations')
+        .update({ seat_number: quantity, amount: totalAmount })
+        .eq('id', registrationId)
+      if (updateError) throw updateError
+      onConfirm(totalAmount)
+    } catch (err: any) {
+      setError(err?.message ?? 'Could not save. Please try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div>
+      <h2 className="font-display text-2xl font-bold text-navy mb-1">Number of Tickets</h2>
+      <p className="font-body text-gray-500 text-sm mb-6">
+        How many tickets do you need for <span className="font-medium text-navy">{workshop.name}</span>?
+      </p>
+
+      {/* 5-box quantity row */}
+      <div className="grid grid-cols-5 gap-2 mb-2">
+        {[1, 2, 3, 4].map((qty) => {
+          const active = quantity === qty && !manualInput
+          return (
+            <button
+              key={qty}
+              type="button"
+              onClick={() => handleBoxClick(qty)}
+              className={`h-14 rounded-xl text-base font-body font-bold transition-all border-2 ${
+                active
+                  ? 'bg-[#0D2B45] border-[#0D2B45] text-white shadow-md'
+                  : 'bg-white border-gray-200 text-navy hover:border-[#16537E] hover:bg-light'
+              }`}
+            >
+              {qty}
+            </button>
+          )
+        })}
+
+        {/* Box 5 — input, shows + when idle */}
+        {(() => {
+          const inputInvalid = !!manualInput && !!manualError
+          const inputSelected = !!manualInput && !manualError && !!quantity
+          const showPlus = !manualInput && !inputFocused
+          return (
+            <div
+              className={`relative h-14 rounded-xl border-2 transition-all flex items-center justify-center ${
+                inputInvalid
+                  ? 'border-red-300 bg-red-50'
+                  : inputSelected
+                  ? 'bg-[#0D2B45] border-[#0D2B45]'
+                  : inputFocused
+                  ? 'border-[#16537E] bg-white'
+                  : 'bg-white border-gray-200 hover:border-[#16537E]'
+              }`}
+            >
+              {showPlus && (
+                <span className="absolute pointer-events-none text-2xl font-light text-gray-400 select-none leading-none">
+                  +
+                </span>
+              )}
+              <input
+                type="number"
+                min={1}
+                value={manualInput}
+                onChange={handleManualChange}
+                onFocus={() => setInputFocused(true)}
+                onBlur={() => setInputFocused(false)}
+                placeholder=""
+                className={`w-full h-full text-center text-base font-body font-bold bg-transparent border-none outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+                  showPlus ? 'caret-transparent' : ''
+                } ${
+                  inputInvalid ? 'text-red-500' : inputSelected ? 'text-white' : 'text-navy'
+                }`}
+              />
+            </div>
+          )
+        })()}
+      </div>
+
+      {manualError && (
+        <p className="font-body text-xs text-red-500 mb-3">{manualError}</p>
+      )}
+
+      {/* Price summary */}
+      {quantity != null && (
+        <div className="flex items-center justify-between bg-light rounded-xl border border-accent/20 px-4 py-3 mb-4">
+          <p className="font-body text-sm text-navy/70">
+            {quantity} {quantity === 1 ? 'ticket' : 'tickets'} × ₹{workshop.price.toLocaleString('en-IN')}
+          </p>
+          <p className="font-body text-base font-bold text-ocean">
+            = ₹{total.toLocaleString('en-IN')}
+          </p>
+        </div>
+      )}
+
+      {error && (
+        <div className="flex items-start gap-3 bg-red-50 border border-red-100 rounded-xl px-4 py-3 mb-4">
+          <XCircle size={18} className="text-red-400 shrink-0 mt-0.5" />
+          <p className="font-body text-sm text-red-600">{error}</p>
+        </div>
+      )}
+
+      <button
+        onClick={handleConfirm}
+        disabled={!quantity || saving}
+        className="mt-2 w-full bg-[#0D2B45] text-white py-3.5 rounded-xl font-body font-semibold hover:bg-[#16537E] transition-colors text-sm disabled:opacity-60"
+      >
+        {saving
+          ? 'Saving…'
+          : quantity
+          ? `Continue to Payment → ₹${total.toLocaleString('en-IN')}`
+          : 'Continue to Payment →'}
+      </button>
+
+      <button
+        onClick={onBack}
+        className="w-full text-center font-body text-sm text-gray-400 hover:text-navy transition-colors mt-4"
+      >
+        ← Edit details
+      </button>
     </div>
   )
 }
@@ -337,29 +540,149 @@ function Step2Payment({
     setVerifying(true)
 
     try {
-      const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
-      if (!validTypes.includes(file.type)) {
-        setError('Please upload a valid image file (JPG, PNG, or WebP).')
+      // ── Check 1: Valid image file ──
+      const validExts = ['.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.bmp', '.gif']
+      const isImage =
+        file.type.startsWith('image/') ||
+        validExts.some((ext) => file.name.toLowerCase().endsWith(ext))
+      if (!isImage) {
+        setError('Please upload a screenshot image from your UPI app.')
         return
       }
-
+      if (file.size < 1024) {
+        setError('The image appears to be empty or corrupted. Please upload a valid screenshot.')
+        return
+      }
       if (file.size > 5 * 1024 * 1024) {
-        setError('File size must be under 5MB. Please upload a smaller screenshot.')
+        setError('File size must be under 5MB. Please compress the screenshot and try again.')
         return
       }
 
-      setVerifyStep('Uploading screenshot…')
+      // ── OCR ──
+      setVerifyStep('Reading screenshot… (may take 10–20 seconds)')
+      const Tesseract = (await import('tesseract.js')).default
+      const { data: { text } } = await Tesseract.recognize(file, 'eng', { logger: () => {} })
+      const lower = text.toLowerCase()
+      console.log('[OCR raw]', text)
+
+      // ── Check 2: Success indicator ──
+      setVerifyStep('Checking payment status…')
+      const successWords = [
+        // Google Pay
+        'completed', 'payment complete',
+        // PhonePe
+        'payment successful', 'payment success',
+        // Paytm
+        'payment done', 'money sent',
+        // BHIM / generic
+        'transaction successful', 'transaction complete', 'transfer successful',
+        // Bank apps
+        'amount debited', 'amount credited',
+        // Generic catch-all
+        'paid', 'success', 'successful', 'debited', 'transferred', 'sent', 'approved',
+      ]
+      const successFound = successWords.some((w) => lower.includes(w))
+      if (!successFound) {
+        setError('Payment success not confirmed. Please upload a screenshot that shows "Paid", "Success", "Completed", or "Debited".')
+        return
+      }
+
+      // ── Check 3: Today's date or recent timestamp ──
+      setVerifyStep('Checking payment date…')
+      const now = new Date()
+      const MONTHS_SHORT = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
+      const MONTHS_LONG  = ['january','february','march','april','may','june','july','august','september','october','november','december']
+      const dd      = String(now.getDate()).padStart(2, '0')
+      const d       = String(now.getDate())
+      const mm      = String(now.getMonth() + 1).padStart(2, '0')
+      const yyyy    = String(now.getFullYear())
+      const yy      = yyyy.slice(2)
+      const mon     = MONTHS_SHORT[now.getMonth()]
+      const monFull = MONTHS_LONG[now.getMonth()]
+      const dateVariants = [
+        // DD/MM/YYYY  (most Indian apps)
+        `${dd}/${mm}/${yyyy}`, `${d}/${mm}/${yyyy}`,
+        `${dd}/${mm}/${yy}`,   `${d}/${mm}/${yy}`,
+        // DD-MM-YYYY
+        `${dd}-${mm}-${yyyy}`, `${d}-${mm}-${yyyy}`, `${dd}-${mm}-${yy}`,
+        // MM/DD/YYYY  (some bank apps)
+        `${mm}/${dd}/${yyyy}`, `${mm}/${dd}/${yy}`,
+        // YYYY-MM-DD  (ISO / some bank exports)
+        `${yyyy}-${mm}-${dd}`,
+        // "24 Jun 2026" / "24 June 2026"
+        `${dd} ${mon} ${yyyy}`, `${d} ${mon} ${yyyy}`,
+        `${dd} ${monFull} ${yyyy}`, `${d} ${monFull} ${yyyy}`,
+        // "Jun 24, 2026" / "June 24, 2026"
+        `${mon} ${dd}, ${yyyy}`, `${mon} ${d}, ${yyyy}`,
+        `${monFull} ${dd}, ${yyyy}`, `${monFull} ${d}, ${yyyy}`,
+        // Relative / inline labels
+        'today', 'just now', 'moments ago', 'seconds ago',
+        'min ago', 'mins ago', 'minute ago', 'minutes ago',
+      ]
+      // UPI apps show a bare time (e.g. "1:21 am") for today's transactions
+      const hasTimeStamp = /\b\d{1,2}:\d{2}\s*(?:am|pm)\b/i.test(text)
+      const dateFound = dateVariants.some((v) => lower.includes(v)) || hasTimeStamp
+      if (!dateFound) {
+        setError("This screenshot appears to be outdated. Please upload today's payment screenshot.")
+        return
+      }
+
+      // ── Check 4: UPI / payment platform indicator ──
+      setVerifyStep('Verifying payment source…')
+      const upiIndicators = [
+        'upi', 'utr', 'ref no', 'reference no', 'reference number',
+        'transaction id', 'txn id', 'txn no',
+        'google pay', 'gpay', 'phonepe', 'paytm', 'bhim', 'amazon pay',
+        'imobile', 'yono', 'mobikwik',
+        'bank', 'neft', 'imps', 'transfer',
+      ]
+      const upiFound = upiIndicators.some((w) => lower.includes(w))
+      if (!upiFound) {
+        setError('Could not verify this as a UPI payment. Please upload a screenshot from your UPI or banking app.')
+        return
+      }
+
+      // ── Check 5: UTR / Transaction ID duplicate check ──
+      setVerifyStep('Verifying transaction ID…')
+      const utrPatterns = [
+        /(?:google\s*(?:transaction|pay)\s*id|upi\s*transaction\s*id|utr|upi\s*ref(?:erence)?)\s*[:#\-]?\s*([A-Z0-9]{12,})/i,
+        /(?:ref(?:erence)?\s*(?:no\.?|id|number)?|txn\s*(?:id|no\.?))\s*[:#\-]?\s*([A-Z0-9]{12,})/i,
+        /(?:transaction\s*(?:id|no\.?))\s*[:#\-]?\s*([A-Z0-9]{12,})/i,
+        /\b(\d{12})\b/,
+      ]
+      let utr: string | null = null
+      for (const pat of utrPatterns) {
+        const m = text.match(pat)
+        if (m?.[1]) { utr = m[1]; break }
+      }
+
+      if (utr) {
+        const { data: dup } = await supabase
+          .from('registrations')
+          .select('id')
+          .eq('utr_number', utr)
+          .maybeSingle()
+        if (dup) {
+          setError('This payment screenshot has already been used. Please make a new payment.')
+          return
+        }
+      }
+
+      // ── All checks passed — save ──
+      setVerifyStep('Confirming payment…')
+      const payload: Record<string, unknown> = { payment_status: 'paid' }
+      if (utr) payload.utr_number = utr
 
       const { error: updateError } = await supabase
         .from('registrations')
-        .update({ payment_status: 'paid' })
+        .update(payload)
         .eq('id', registration.id)
       if (updateError) throw updateError
 
       onPaid()
 
     } catch (err: any) {
-      setError(err?.message ?? 'Upload failed. Please try again.')
+      setError(err?.message ?? 'Verification failed. Please try again.')
     } finally {
       setVerifying(false)
       setVerifyStep('')

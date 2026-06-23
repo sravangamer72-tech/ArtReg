@@ -104,7 +104,7 @@ function BenefitCard({ Icon, title, desc, delay }: BenefitDef & { delay: number 
 /* ─── Page ───────────────────────────────────────────────────────── */
 const BENEFITS: BenefitDef[] = [
   { Icon: Palette,  title: 'Express Freely',   desc: 'Sessions led by practicing professional artists with years of teaching and creative experience.' },
-  { Icon: Users,    title: 'Connect Deeply',   desc: 'Maximum 12 participants per session — everyone gets personal attention, feedback, and guidance.' },
+  { Icon: Users,    title: 'Connect Deeply',   desc: 'Every participant gets personal attention, feedback, and guidance from the artist.' },
   { Icon: Star,     title: 'Experience Art',   desc: "No experience required. Whether it's your first brushstroke or your hundredth, you belong here." },
   { Icon: Sparkles, title: 'Resonate Within',  desc: 'All art supplies are provided. Just bring your curiosity — canvas, paints, and brushes await.' },
   { Icon: Package,  title: 'Heal Through Art', desc: "Every piece you create is yours to keep. Leave with finished artwork you're genuinely proud of." },
